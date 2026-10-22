@@ -316,8 +316,8 @@ function startAt(t){if(A.readyState<1){A.addEventListener('loadedmetadata',()=>s
 /* job: {type:'word'|'sent', i, btn, next} or {type:'chain', list, n, round, loops, shuf, btn, i} */
 function stopAll(){S.job=null;A.pause();clearMarks();resetRunBtns();setMS(null);showPlayer(false);if(S.mode!=='quiz')setCount()}
 function clearMarks(){$$('.play.busy').forEach(b=>b.classList.remove('busy'));$$('.sent.all').forEach(s=>s.classList.remove('all'));$$('.entry.now').forEach(e=>e.classList.remove('now'))}
-function playWord(i,btn,next){if(notReady())return;A.pause();clearMarks();S.job={type:'word',i,btn,next};btn&&btn.classList.add('busy');startAt(O(i)[0]-0.05)}
-function playSentence(i,btn,next){if(notReady())return;A.pause();clearMarks();S.job={type:'sent',i,btn,next};btn&&btn.classList.add('busy');const el=document.getElementById('s'+i);el&&el.classList.add('all');startAt(O(i)[2]-0.05)}
+function playWord(i,btn,next){if(notReady())return;A.pause();clearMarks();const j=S.job={type:'word',i,btn,next};btn&&btn.classList.add('busy');seekWait(j,O(i)[0]-0.05)}
+function playSentence(i,btn,next){if(notReady())return;A.pause();clearMarks();const j=S.job={type:'sent',i,btn,next};btn&&btn.classList.add('busy');const el=document.getElementById('s'+i);el&&el.classList.add('all');seekWait(j,O(i)[2]-0.05)}
 
 let lastPhase='';
 function markPhase(i,t){
@@ -330,8 +330,9 @@ function markPhase(i,t){
 }
 A.addEventListener('timeupdate',()=>{
   const j=S.job;if(!j)return;const t=A.currentTime;
-  if(j.type==='word'){if(t>=O(j.i)[1]+0.05){A.pause();j.btn&&j.btn.classList.remove('busy');S.job=null;j.next&&j.next()}return}
-  if(j.type==='sent'){if(t>=O(j.i)[3]+0.05){A.pause();S.job=null;clearMarks();j.next&&j.next()}return}
+  if((j.type==='word'||j.type==='sent')&&(j.wait||A.seeking))return; /* 跳轉尚未完成時的舊時間點，略過 */
+  if(j.type==='word'){if(t<O(j.i)[0]-0.6||t>O(j.i)[4]+3)return;if(t>=O(j.i)[1]+0.05){A.pause();j.btn&&j.btn.classList.remove('busy');S.job=null;j.next&&j.next()}return}
+  if(j.type==='sent'){if(t<O(j.i)[2]-0.6||t>O(j.i)[4]+3)return;if(t>=O(j.i)[3]+0.05){A.pause();S.job=null;clearMarks();j.next&&j.next()}return}
   if(j.type==='chain'){
     if(j.fp){if(!j.wait&&!A.seeking&&t>SIL[S.acc]+25)seekWait(j,SIL[S.acc]);return} /* 假暫停：在靜音區循環 */
     if(j.wait||A.seeking)return;
@@ -391,8 +392,8 @@ const MS='mediaSession' in navigator?navigator.mediaSession:null;
 function setMS(i){if(!MS)return;
   if(i===null){try{MS.metadata=null}catch(e){}return}
   const d=DATA[i];try{MS.metadata=new MediaMetadata({title:d[0],artist:`No. ${i+1}　${d[4]}`,album:'B1 Preliminary 單字 A–B'})}catch(e){}}
-function msNext(){const j=S.job;if(j&&j.type==='chain'){advance(j,true);return true}return false}
-function msPrev(){const j=S.job;if(j&&j.type==='chain'){let n=j.n-1;while(n>0&&S.learned.has(j.list[n]))n--;j.n=Math.max(0,n);j.i=null;goItem(j,true);return true}return false}
+function msNext(){if(S.job&&S.job.chain){const ch=endInterlude();if(ch&&ch.snap){ch.snap=null}}const j=S.job;if(j&&j.type==='chain'){advance(j,true);return true}return false}
+function msPrev(){if(S.job&&S.job.chain){const ch=endInterlude();if(ch&&ch.snap){ch.snap=null}}const j=S.job;if(j&&j.type==='chain'){let n=j.n-1;while(n>0&&S.learned.has(j.list[n]))n--;j.n=Math.max(0,n);j.i=null;goItem(j,true);return true}return false}
 function bindMS(){if(!MS)return;
   const set=(k,f)=>{try{MS.setActionHandler(k,f)}catch(e){}};
   set('play',()=>playReq());
@@ -557,15 +558,19 @@ function interlude(kind,i,b){
 }
 function resumeChain(ch){if(S.job)return;S.job=ch;const f=ch.snap;ch.snap=null;
   if(ch.wasPaused){if(S.fakePause){ch.fp=f;seekWait(ch,SIL[S.acc])}else{ch.snap=f;A.pause()}}
-  else restoreSnap(ch,f);
+  else{restoreSnap(ch,f);
+    setTimeout(()=>{if(S.job===ch&&!ch.fp&&A.paused){const p=A.play();p&&p.catch&&p.catch(()=>{});
+      setTimeout(()=>{if(S.job===ch&&A.paused){syncPlayBtn();$('#count').textContent=`已暫停：No. ${ch.i+1}（按 ▶ 繼續）`}},800)}},1500)}
   setMS(ch.i);syncPlayBtn()}
 function fakeResume(j){const f=j.fp;if(!f)return;j.fp=null;lastPhase='';
   if(f.gapRemain!=null){j.after=f.after;j.gapUntil=SIL[S.acc]+f.gapRemain;seekWait(j,SIL[S.acc])}
   else{const o=O(j.i);if(f.ph==='s'){j.ph='s';seekWait(j,o[2]-0.25)}else{j.ph='w';seekWait(j,o[0]-0.25)}} /* 從目前的單字或例句開頭重唸 */
   syncPlayBtn();try{MS&&(MS.playbackState='playing')}catch(e){}}
 function pauseReq(){const j=S.job;if(j&&j.type==='chain'&&S.fakePause&&!A.paused)fakePause(j);else A.pause()}
-function playReq(){const j=S.job;if(!j)return;if(j.fp)fakeResume(j);else if(j.snap){const f=j.snap;j.snap=null;restoreSnap(j,f);syncPlayBtn()}else{const p=A.play();p&&p.catch&&p.catch(()=>{})}}
-function togglePause(){const j=S.job;if(!j||j.type!=='chain')return;if(isPaused())playReq();else pauseReq()}
+function playReq(){if(S.job&&S.job.chain&&!A.paused)return;const j=S.job;if(!j)return;if(j.fp)fakeResume(j);else if(j.snap){const f=j.snap;j.snap=null;restoreSnap(j,f);syncPlayBtn()}else{const p=A.play();p&&p.catch&&p.catch(()=>{})}}
+/* 插播中按暫停／播放、上一個、下一個：結束插播，回到原本的循環播放 */
+function endInterlude(){const j=S.job;if(!j||!j.chain)return null;const ch=j.chain;j.next=null;A.pause();clearMarks();S.job=null;resumeChain(ch);return ch}
+function togglePause(){if(S.job&&S.job.chain){endInterlude();return}const j=S.job;if(!j||j.type!=='chain')return;if(isPaused())playReq();else pauseReq()}
 function syncPlayBtn(){const paused=isPaused();$('#player').classList.toggle('paused',paused);$('#pPlay').setAttribute('aria-label',paused?'繼續播放':'暫停');
   const j=S.job;if(j&&j.type==='chain'){updPlayer(j.gapUntil!=null);if(paused)$('#count').textContent=`已暫停：No. ${j.i+1}（按 ▶ 或空白鍵繼續）`;else status(j,j.gapUntil!=null)}}
 A.addEventListener('play',syncPlayBtn);A.addEventListener('pause',syncPlayBtn);
