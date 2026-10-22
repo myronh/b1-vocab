@@ -331,8 +331,8 @@ function markPhase(i,t){
 A.addEventListener('timeupdate',()=>{
   const j=S.job;if(!j)return;const t=A.currentTime;
   if((j.type==='word'||j.type==='sent')&&(j.wait||A.seeking))return; /* 跳轉尚未完成時的舊時間點，略過 */
-  if(j.type==='word'){if(t<O(j.i)[0]-0.6||t>O(j.i)[4]+3)return;if(t>=O(j.i)[1]+0.05){A.pause();j.btn&&j.btn.classList.remove('busy');S.job=null;j.next&&j.next()}return}
-  if(j.type==='sent'){if(t<O(j.i)[2]-0.6||t>O(j.i)[4]+3)return;if(t>=O(j.i)[3]+0.05){A.pause();S.job=null;clearMarks();j.next&&j.next()}return}
+  if(j.type==='word'){if(t<O(j.i)[0]-0.6||t>O(j.i)[4]+3)return;if(t>=O(j.i)[1]+0.05){if(!j.next)A.pause();j.btn&&j.btn.classList.remove('busy');S.job=null;j.next&&j.next()}return}
+  if(j.type==='sent'){if(t<O(j.i)[2]-0.6||t>O(j.i)[4]+3)return;if(t>=O(j.i)[3]+0.05){if(!j.next)A.pause();S.job=null;clearMarks();j.next&&j.next()}return}
   if(j.type==='chain'){
     if(j.fp){if(!j.wait&&!A.seeking&&t>SIL[S.acc]+25)seekWait(j,SIL[S.acc]);return} /* 假暫停：在靜音區循環 */
     if(j.wait||A.seeking)return;
@@ -547,6 +547,7 @@ function restoreSnap(j,f){lastPhase='';j.gapUntil=null;
   if(f.gapRemain!=null){j.after=f.after;j.gapUntil=SIL[S.acc]+f.gapRemain;seekWait(j,SIL[S.acc])}
   else{const o=O(j.i);if(f.ph==='s'){j.ph='s';seekWait(j,o[2]-0.25)}else{j.ph='w';seekWait(j,o[0]-0.25)}}}
 /* 循環播放中點了單字／例句的播放鍵：先插播那一個，播完自動回到原本的位置 */
+/* 插播結束時不暫停音檔，直接跳回原位置繼續播：Safari 不允許非點擊觸發的重新播放 */
 function interlude(kind,i,b){
   let ch=null;const cur=S.job;
   if(cur&&cur.type==='chain'){ch=cur;ch.snap=snapOf(cur);ch.wasPaused=isPaused();ch.fp=null;ch.gapUntil=null}
@@ -569,7 +570,7 @@ function fakeResume(j){const f=j.fp;if(!f)return;j.fp=null;lastPhase='';
 function pauseReq(){const j=S.job;if(j&&j.type==='chain'&&S.fakePause&&!A.paused)fakePause(j);else A.pause()}
 function playReq(){if(S.job&&S.job.chain&&!A.paused)return;const j=S.job;if(!j)return;if(j.fp)fakeResume(j);else if(j.snap){const f=j.snap;j.snap=null;restoreSnap(j,f);syncPlayBtn()}else{const p=A.play();p&&p.catch&&p.catch(()=>{})}}
 /* 插播中按暫停／播放、上一個、下一個：結束插播，回到原本的循環播放 */
-function endInterlude(){const j=S.job;if(!j||!j.chain)return null;const ch=j.chain;j.next=null;A.pause();clearMarks();S.job=null;resumeChain(ch);return ch}
+function endInterlude(){const j=S.job;if(!j||!j.chain)return null;const ch=j.chain;j.next=null;clearMarks();S.job=null;resumeChain(ch);return ch}
 function togglePause(){if(S.job&&S.job.chain){endInterlude();return}const j=S.job;if(!j||j.type!=='chain')return;if(isPaused())playReq();else pauseReq()}
 function syncPlayBtn(){const paused=isPaused();$('#player').classList.toggle('paused',paused);$('#pPlay').setAttribute('aria-label',paused?'繼續播放':'暫停');
   const j=S.job;if(j&&j.type==='chain'){updPlayer(j.gapUntil!=null);if(paused)$('#count').textContent=`已暫停：No. ${j.i+1}（按 ▶ 或空白鍵繼續）`;else status(j,j.gapUntil!=null)}}
